@@ -1,1 +1,2 @@
 # Track-1
+This is the repository for Track 1 of Google's Capstone Project. Focusing on analyzing a given dataset and working with existing questions. Case study #2 will give the option to analyze publicly available fitness tracker data in order to gain insights into how consumers are using these products. Identifying any trends in this data will be key. This will help Bellabeat, a high-tech manufacturer of health-focused products for women, determine marketing strategy in the future.
