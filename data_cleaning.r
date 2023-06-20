@@ -30,25 +30,31 @@ bigrquery::bq_auth()
 heartrate_activity <- tbl(con, "heartrate_activity_merged") %>%
     mutate(Id=as.numeric(Id)) %>%
     distinct() %>%
-    mutate(datetime=sql("DATETIME(date,time)"))
+    mutate(datetime=sql("DATETIME(date,time)")) %>%
+    show_query()
+class(heartrate_activity)
 glimpse(heartrate_activity)
-## 3.4 Million rows by minute/sec!! Let's get those lower but still usable. Result 8499 rows!
-heartrate_hourly_activity <- heartrate_activity %>%
+## 3.4 Million rows by minute/sec!! Let's get those lower but still usable. Result 8499 rows! Saved in bigquery as heartrate_activity_hourly
+## WE can also save by using as_data_frame() and dbWriteTable(connection,name_of_table,value)
+
+heartrate_activity %>%
     mutate(hour=sql("DATETIME_TRUNC(datetime, hour)")) %>%
     select(Id,hour,Value) %>%
     group_by(Id,hour ) %>%
-    summarise(avg_heartrate=mean(Value),min_heartrate=min(Value),max_heartrate=max(Value)) %>%
-    glimpse()
-glimpse(heartrate_hourly_activity)
-#Graph usage time or active device time by users
+    summarise(avg_heartrate=mean(Value),min_heartrate=min(Value),max_heartrate=max(Value),num_readings=count(Value)) #%>%
+    as_data_frame() %>%
+    dbWriteTable(con,"heartrate_activity_hourly",.)
+##Needed to run the pointer to reduce the billing of data. From 113 MB per consult to 10 MB
+heartrate_hourly_activity <- tbl(con,"heartrate_activity_hourly")
+
+#Graph usage time or active device time
 heartrate_hourly_activity %>%
-    mutate(day=sql("DATETIME_TRUNC(hour,day)")) %>%
-    group_by(day) %>%
-    summarize(users=count(distinct(Id))) %>%
-    arrange(desc(day)) %>%
-    ggplot(aes(day,users))+geom_line()+geom_smooth()+
-    scale_x_datetime(date_labels = "%m/%d", breaks="3 days")+
-    scale_y_continuous(breaks=seq(0,14,by=2))
+    #mutate(day=sql("DATETIME_TRUNC(hour,day)")) %>%
+    mutate(Id=as.character(Id)) %>%
+    group_by(hour) %>%
+    ggplot(aes(x= hour,y = reorder (Id,-num_readings)))+geom_point(aes(alpha=avg_heartrate),colour="#932307")+
+    scale_x_datetime(date_labels = "%m/%d", breaks="2 days")+
+    scale_y_discrete()
 #Graph in slow usage time
 heartrate_hourly_activity %>%
     filter(hour>"2016-04-10 00:00:00" & hour<"2016-04-13 00:00:00") %>%
@@ -91,4 +97,20 @@ daily_activity %>%
     scale_y_continuous(breaks=seq(0,36,by=2))
 
 #JOIN the hourly data
-
+dbListTables(con)
+calories_hourly <- tbl(con, "calories_merged") %>%
+    transmute(Id,Calories, Datetime=sql("DATETIME(Date,Time)")) %>%
+    show_query()
+steps_hourly <- tbl(con,"steps_merged") %>%
+    transmute(Id,StepTotal, Datetime=sql("DATETIME(Date,Time)")) %>%
+    show_query()
+intensity_hourly <- tbl(con,"intensities_merged") %>%
+    transmute(Id,TotalIntensity,AverageIntensity, Datetime=sql("DATETIME(Date,Time)")) %>%
+    show_query()
+hourly_data <- inner_join(calories_hourly,steps_hourly, by=c("Id","Datetime")) %>% 
+    inner_join(intensity_hourly, by=c("Id","Datetime")) %>%
+    mutate(Id=as.numeric(Id)) %>%
+    relocate(Datetime,.after=Id) %>%
+    arrange(Datetime) %>%
+    as.data.frame() %>%
+    dbWriteTable(con,"data_hourly",.)
